@@ -1,0 +1,6 @@
+# dune utop
+# OCAMLPARAM: unset
+# Workspace root: /home/ubuntu/Home/CS496/PLaF/src
+$ /usr/bin/nproc > /tmp/dune9c8308.output 2> /dev/null
+# Auto-detected concurrency: 1
+# disable binary cache

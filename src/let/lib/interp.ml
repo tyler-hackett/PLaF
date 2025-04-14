@@ -1,3 +1,5 @@
+(**Tyler Hackett and Justin Gajewski*)
+
 open Parser_plaf.Ast
 open Parser_plaf.Parser
 open Ds
@@ -6,7 +8,7 @@ open Ds
 let rec eval_expr : expr -> exp_val ea_result =
   fun e ->
   match e with
-  | Int(n) ->
+  | Int n ->
     return (NumVal n)
   | Var(id) ->
     apply_env id
@@ -54,6 +56,56 @@ let rec eval_expr : expr -> exp_val ea_result =
     string_of_env >>= fun str ->
     print_endline str; 
     error "Debug called"
+
+  | EmptyTree(_t) -> 
+    return (TreeVal Empty)
+  | Node(e1,e2,e3) ->
+    eval_expr e1 >>= fun v1 ->
+    eval_expr e2 >>= fun v2 ->
+    eval_expr e3 >>= fun v3 ->
+    (match (v2, v3) with
+    | (TreeVal t2, TreeVal t3) -> 
+      return (TreeVal (Node (v1, t2, t3)))
+    | _ -> error "Node Error: The second and third argument must be a tree"
+    )
+  | IsEmpty(e) ->
+    eval_expr e >>= (function
+      | TreeVal Empty -> 
+        return (BoolVal true)
+      | TreeVal _ -> 
+        return (BoolVal false)
+      | _ -> error "IsEmpty Error: Expected a tree"
+    )
+  | CaseT(e1,e2,id1,id2,id3,e3) ->
+    eval_expr e1 >>= (function
+      | TreeVal Empty -> eval_expr e2
+      | TreeVal (Node (v, l, r)) ->
+        extend_env id1 v >>+
+        extend_env id2 (TreeVal l) >>+
+        extend_env id3 (TreeVal r) >>+
+        eval_expr e3
+      | _ -> error "CaseT Error: Expected a tree"
+    )
+
+  | Record(fs) ->
+    let rec eval_fields fs acc =
+      match fs with
+      | [] -> return (RecordVal (List.rev acc))
+      | (fname, (_, e)) :: rest ->
+          eval_expr e >>= fun ev ->
+          if List.mem_assoc fname acc
+          then error ("Duplicate field: " ^ fname)
+          else eval_fields rest ((fname, (false, ev)) :: acc)
+    in
+    eval_fields fs []
+  | Proj(e, id) ->
+    eval_expr e >>= fun ev ->
+    (match ev with
+      | RecordVal(fs) ->
+          (try return (snd (List.assoc id fs))
+          with Not_found -> error ("Field does not exist: " ^ id))
+      | _ -> error "Proj: Expected a record")
+
   | _ -> failwith "Not implemented yet!"
 
 (** [eval_prog e] evaluates program [e] *)
