@@ -8,15 +8,19 @@ in let add_front = proc (x) { proc (l) {
 		 l.length <= l.length+1
               end
 	      } }
-in letrec remove_last_helper(nd) = 
+in letrec remove_last_helper(nd) =
   if number?(nd.next.next)
   then nd.next <= 0
   else (remove_last_helper nd.next)
 in let remove_last = proc (l) {
-  if number?(l.head.next)
-  then l.head <= 0
-  else (remove_last_helper l.head);
-  l.length <= l.length - 1
+  begin
+    (
+      if number?(l.head.next)
+      then l.head <= 0
+      else (remove_last_helper l.head)
+    );
+    l.length <= l.length - 1
+  end
 }
 in begin
      ((add_front 2) l1);

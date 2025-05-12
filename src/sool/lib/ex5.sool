@@ -1,0 +1,9 @@
+class c extends object {
+}
+class d extends c {
+}
+class e extends c {
+}
+
+let o = new d ()
+in instanceof ?( o , d )

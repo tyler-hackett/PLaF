@@ -1,3 +1,5 @@
+(* Names: Tyler Hackett, Justin Gajewski *)
+
 open Ds
 open Parser_plaf.Ast
 open Parser_plaf.Parser
@@ -103,6 +105,9 @@ let rec eval_expr : expr -> exp_val ea_result = fun e ->
     let str_store = Store.string_of_store string_of_expval g_store 
     in (print_endline (str_env^"\n"^str_store);
     error "Reached breakpoint")
+  | Record(fs) ->
+    sequence (List.map process_field fs) >>= fun evs ->
+    return (RecordVal(addIds fs evs))
   | Proj(e, id) ->
     eval_expr e >>= fun rv ->
     fields_of_recordVal rv >>= fun fields ->
@@ -127,6 +132,11 @@ let rec eval_expr : expr -> exp_val ea_result = fun e ->
     | _ -> return (BoolVal false))
   | _ -> failwith ("Not implemented: "^string_of_expr e)
 
+and process_field (id, (is_mutable, e)) =
+  eval_expr e >>= fun ev ->
+  if is_mutable
+  then return (RefVal(Store.new_ref g_store ev))
+  else return ev
 let eval_prog (AProg(_,e)) =
   eval_expr e         
 

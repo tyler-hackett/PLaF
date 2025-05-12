@@ -1,7 +1,7 @@
 
 (* Add Last exercise *)
 
-let l1 = { head = 0; length = 0} (* 0 in head signals null *)
+let l1 = { head <= 0; length <= 0} (* 0 in head signals null *)
 in letrec add_last_helper(nd) = proc (key) {
                  if number?(nd.next)
 		 then nd.next <= { data <=key; next <= 0 }
@@ -9,10 +9,12 @@ in letrec add_last_helper(nd) = proc (key) {
 	      }
 in let add_last = proc (l) {
   proc (key) {
-    if number?(l.head)
-    then l.head <= { data <= key; next <= 0 }
-    else ((add_last_helper l.head) key)
-    l.length <= l.length + 1
+    begin
+      if number?(l.head)
+      then l.head <= { data <= key; next <= 0 }
+      else ((add_last_helper l.head) key);
+      l.length <= l.length + 1
+    end
   }
 }
 in begin

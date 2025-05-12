@@ -3,7 +3,6 @@ open ReM
 open Parser_plaf.Ast
 open Parser_plaf.Parser
 
-(* params * body * super * fields *)
 type method_decl = string list*expr*string*string list
 
 type method_env = (string*method_decl) list
@@ -12,20 +11,23 @@ type class_decl = string*string list*method_env
 
 type class_env = ((string*class_decl) list)
 
-(* Global holding the store *)
 let g_store = Store.empty_store 20 (NumVal 0)
 
-(* Global holding class declarations *)
 let g_class_env : class_env ref = ref []
 
+let name_mangle n es = n ^ "_" ^ string_of_int (List.length es)
 
-
-(* Initialize contents of g_class_env variable  *)
+let rec is_subclass : string -> string -> class_env -> exp_val ea_result =
+  fun id1 id2 c_env ->
+  if id1 = id2 then return (BoolVal true)
+  else
+    match List.assoc_opt id1 c_env with
+    | None -> error ("is_subclass: class " ^ id1 ^ " not found")
+    | Some (super, _, _) ->
+      if super = "" then return (BoolVal false)
+      else is_subclass super id2 c_env
 
 let initialize_class_env cs =      
- (* Return all visible fields from class c_name 
-  * Note: Should produce an error if the super class does not exist,
- this is pending  *)
   let rec get_fields =
     fun cs c_name class_decls ->
       match class_decls with
@@ -35,25 +37,23 @@ let initialize_class_env cs =
       | Class (_,_,_,_,_)::cs'  | Interface(_,_)::cs' ->
         get_fields cs c_name cs'
   in  
-  (* Return all visible methods from class c_name 
-   * Note: Should produce an error if the super class does not exist,
-     this is pending   *)
   let rec get_methods cs c_name fss = function
     | [] -> []
     | Class (name,super,_impl,_fields,methods)::_  when name=c_name ->
       (List.map (fun (Method(n,_ret_type,pars,body))
-                  -> (n,(List.map fst pars,body,super,List.flatten fss)))
+                  -> (name_mangle n (List.map fst pars),
+                      (List.map fst pars,body,super,List.flatten fss)))
          methods) @ get_methods cs super (List.tl fss) cs
     | Class (_,_,_,_,_)::cs'  | Interface(_,_)::cs'
       -> get_methods cs c_name fss cs'
   in
-  (* Build class environment *)
   let rec initialize_class_env' cs = function
       | [] -> ()
       | Class (name,super,_impl,fields,methods)::cs'  ->
         let fss = (List.map fst fields) :: get_fields cs super cs
         in let ms = (List.map (fun (Method(n,_ret_type,pars,body))
-                                -> (n,(List.map fst pars,body,super,List.flatten fss)))
+                                -> (name_mangle n (List.map fst pars),
+                                    (List.map fst pars,body,super,List.flatten fss)))
                        methods) @ get_methods cs super (List.tl fss) cs
         in
         g_class_env := (name,(super,List.flatten fss,ms))::!g_class_env;
@@ -64,9 +64,6 @@ let initialize_class_env cs =
   initialize_class_env' cs cs
 
 let slice fs env =
-  (* return env >>+ string_of_env >>= fun senv -> *)
-  (* print_string  @@ "Slicing:" ^String.concat "," fs *)
-  (*                  ^ "\n" ^ senv ^"\n"; *)
   let rec slice' fs acc env =
     match fs, env with
     | [],_ -> acc
@@ -76,8 +73,7 @@ let slice fs env =
       "slice: ids different or lists have different lengths "
   in
   let new_env = (slice' (List.rev fs) EmptyEnv env) 
-  in (* print_string @@ "Result is:" ^(string_of_env' new_env) ^"\n"; *)
-  return new_env
+  in return new_env
 
 let new_env : string list -> env ea_result  =
   fun fs ->
@@ -98,11 +94,10 @@ let lookup_method : string -> string -> class_env -> method_decl option =
 let rec apply_method : string -> exp_val -> exp_val list ->
   method_decl -> exp_val ea_result =
   fun m_name self args (pars,body,super,fs) -> 
-  let l = Store.new_ref g_store self (* allocate self *)
+  let l = Store.new_ref g_store self
   and l_args = List.map (fun ev -> RefVal (Store.new_ref g_store ev))
-      args (* allocate args, as in IMPLICIT-REFS *)
+      args
   in let l' = Store.new_ref g_store (StringVal super)
-  (* allocate name of superclass *)
   in
   if List.length args<> List.length pars
   then error (m_name ^": args and params have different lengths")
@@ -193,7 +188,6 @@ and
      Store.set_ref g_store l (ProcVal(par,e,env)) >>= fun _ ->
      eval_expr target
     )
-  (* Mutable references operations *)
   | Set(id,e) ->
     eval_expr e >>= fun ev ->
     apply_env id >>=
@@ -205,7 +199,6 @@ and
   | BeginEnd(es) -> 
     eval_exprs es >>= fun vs ->
     return (List.hd (List.rev vs))
-  (* SOOL operations *)
   | NewObject(c_name,es) ->
     eval_exprs es >>= fun args ->
     (match List.assoc_opt c_name !g_class_env with
@@ -221,9 +214,10 @@ and
     eval_expr e >>= fun self ->
     obj_of_objectVal self >>= fun (c_name,_) ->
     eval_exprs es >>= fun args ->
-    (match lookup_method c_name m_name !g_class_env with
+    let mangled_name = name_mangle m_name args in
+    (match lookup_method c_name mangled_name !g_class_env with
      | None -> error "Method not found"
-     | Some m -> apply_method m_name self args m)
+     | Some m -> apply_method mangled_name self args m)
   | Self ->
     eval_expr (Var "_self")
   | Super(m_name,es) ->
@@ -231,10 +225,10 @@ and
     eval_expr (Var "_super") >>=
     string_of_stringVal >>= fun c_name ->
     eval_expr (Var "_self") >>= fun self ->
-    (match lookup_method c_name m_name !g_class_env with
+    let mangled_name = name_mangle m_name args in
+    (match lookup_method c_name mangled_name !g_class_env with
      | None -> error "Method not found"
-     | Some m -> apply_method m_name self args m)
-  (* List operations* *)
+     | Some m -> apply_method mangled_name self args m)
   | List(es) ->
     eval_exprs es >>= fun args ->
     return @@ ListVal args
@@ -255,7 +249,10 @@ and
     eval_expr e >>=
     list_of_listVal >>= fun l ->
     return @@ BoolVal (l=[])   
-  (* Debug *)
+  | IsInstanceOf(e, id) ->
+    eval_expr e >>= fun obj ->
+    obj_of_objectVal obj >>= fun (c_name, _) ->
+    is_subclass c_name id !g_class_env
   | Debug(_e) ->
     string_of_env >>= fun str_env ->
     let str_store = Store.string_of_store string_of_expval g_store
@@ -274,16 +271,13 @@ and
 and
   eval_prog : prog -> exp_val ea_result =
   fun (AProg(cs, e)) ->
-  initialize_class_env cs;   (* Step 1 *) 
-  eval_expr e                (* Step 2 *)
+  initialize_class_env cs;
+  eval_expr e
 
-
-(** [interp s] evaluates program [s] *)
 let interp (s: string) : exp_val result = 
   let c = s |> parse |> eval_prog in
   run c
 
-(** [interpf file_name] evaluates program in file [file_name] *)
 let interpf (file_name: string) : exp_val result = 
   let c = file_name |> parsef |> eval_prog in
   run c
