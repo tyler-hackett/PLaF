@@ -6,4 +6,4 @@ class e extends c {
 }
 
 let o = new d ()
-in instanceof ?( o , d )
+in instanceof?(o,d)
